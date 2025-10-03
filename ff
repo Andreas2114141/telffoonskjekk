@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request, jsonify, render_template_string
 import requests
 
 app = Flask(__name__)
@@ -6,9 +6,199 @@ app = Flask(__name__)
 SMSPOOL_API_KEY = "FYYgvc2DJZtNikuFMkoq95kzQTWVNmFD"
 SMSPOOL_URL = "https://api.smspool.net/carrier/paid_lookup"
 
+# Hele HTML som en string
+HTML_PAGE = """
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mobilleverandør</title>
+<style>
+/* Her kan du lime inn all CSS fra index.html */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap');
+
+body {
+  margin:0;
+  font-family:'Orbitron',sans-serif;
+  color:#fff;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:20px;
+  min-height:100vh;
+  overflow-x:hidden;
+  overflow-y:hidden;
+  background: #0b0c1b;
+}
+/* Bakgrunnsanimasjon */
+body::before {
+  content:"";
+  position:fixed;
+  top:0; left:0;
+  width:100%; height:100%;
+  z-index:-1;
+  background: radial-gradient(circle at 30% 30%, #4a0072, #1a001f, #0b0c1b);
+  animation: bgMove 60s linear infinite;
+}
+@keyframes bgMove {0% {background-position:0% 0%;}50% {background-position:100% 100%;}100% {background-position:0% 0%;}}
+h1 { font-size:3rem; margin-bottom:20px; color:#ff00ff; text-shadow: 0 0 5px #ff00ff,0 0 15px #6a00ff; text-align:center;}
+input, select, button { padding:15px 20px; font-size:1.2rem; border-radius:15px; border:none; margin:10px; cursor:pointer; transition:transform 0.2s, box-shadow 0.3s; text-align:center;}
+input {background:#2b0033;color:#fff;box-shadow:0 0 15px #ff00ff,0 0 25px #6a00ff inset;}
+select {background:#2b0033;color:#fff;box-shadow:0 0 15px #ff00ff,0 0 25px #6a00ff inset;}
+button#checkCarrierBtn { font-family: 'Orbitron', sans-serif; font-weight:700; background: linear-gradient(135deg, #00fff0, #006aff); color: #0b0c1b; border: 2px solid #00fff0; padding: 15px 30px; border-radius: 25px; cursor: pointer; text-transform: uppercase; font-size: 1.2rem; box-shadow: 0 0 20px #00fff0, 0 0 40px #006aff inset; transition: all 0.3s ease;}
+button#checkCarrierBtn:hover { box-shadow: 0 0 40px #00fff0, 0 0 80px #006aff inset; transform: scale(1.08) rotate(-1deg);}
+button#checkCarrierBtn:active { transform: scale(0.95) rotate(2deg); box-shadow: 0 0 60px #00fff0, 0 0 120px #006aff inset;}
+.carrier-result { margin-top:20px; font-size:2rem; font-weight:bold; color:#00ffea; text-shadow:0 0 10px #00ffea,0 0 20px #6affff; animation: glow 1.5s infinite alternate;}
+@keyframes glow {0% {text-shadow:0 0 10px #00ffea,0 0 20px #6affff;}100% {text-shadow:0 0 30px #00ffea,0 0 50px #6affff;}}
+#plansContainer { margin-top:20px; width:90%; max-width:600px; display:flex; flex-direction:column;}
+.plan-item { background: rgba(255,0,255,0.05); margin:8px 0; padding:12px; border-radius:12px; transition:transform 0.3s,background 0.3s,box-shadow 0.3s; cursor:pointer; opacity:0; transform:translateX(-30px); color:#fff; text-shadow:0 0 5px #00ffea,0 0 15px #00ffea;}
+.plan-item.show {animation:flyIn 0.5s forwards;}
+.plan-item:hover {transform:scale(1.05) rotate(-1deg); background:rgba(255,0,255,0.2); box-shadow:0 0 20px #ff00ff,0 0 40px #6a00ff inset;}
+@keyframes flyIn {to {opacity:1; transform:translateX(0);}}
+.plan-name {font-weight:bold; color:#ff00ff;}
+.plan-price {float:right; color:#00ffea;}
+#loginContainer { position:fixed; top:0; left:0; width:100%; height:100%; background: rgba(11,12,27,0.99); display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:10; transition:all 0.5s ease;}
+#loginContainer.success { animation:loginSuccess 1s forwards;}
+@keyframes loginSuccess { 0% {transform:scale(1);} 50% {transform:scale(1.1);} 100% {transform:scale(1); opacity:0; visibility:hidden;} }
+</style>
+</head>
+<body>
+
+<div id="loginContainer">
+  <h1>Logg inn</h1>
+  <input type="password" id="passwordInput" placeholder="Skriv inn passord">
+  <button onclick="checkPassword()">Logg inn</button>
+  <div id="loginMessage" style="margin-top:10px;color:#ff00ff;"></div>
+</div>
+
+<h1>Mobilleverandør</h1>
+
+<div style="display:none;">
+  <input type="text" id="countryCode" value="+47">
+</div>
+
+<input id="phone" type="text" placeholder="Skriv inn telefonnummer (uten +47)">
+<button id="checkCarrierBtn" onclick="checkCarrier()">Sjekk leverandør</button>
+<div class="carrier-result" id="carrierResult"></div>
+
+<select id="providerSelect" onchange="showPlans()">
+  <option value="">Velg leverandør</option>
+  <option value="Fjordkraft">Fjordkraft</option>
+  <option value="PlussMobil">PlussMobil</option>
+  <option value="OneCall">OneCall</option>
+  <option value="Ice">Ice</option>
+  <option value="Talkmore">Talkmore</option>
+  <option value="Telenor">Telenor</option>
+  <option value="Chilimobil">Chilimobil</option>
+  <option value="Happybytes">Happybytes</option>
+</select>
+
+<div id="plansContainer"></div>
+
+<script>
+/* Lim inn all JavaScript fra index.html */
+const plansData = {{ plans_data|safe }};
+async function checkCarrier(){
+  const phoneInput = document.getElementById('phone').value.trim();
+  const countryCode = document.getElementById('countryCode').value;
+  const resultEl = document.getElementById('carrierResult');
+  if(!phoneInput){ resultEl.textContent = 'Skriv inn et telefonnummer!'; return; }
+  const phone = phoneInput.startsWith('+') ? phoneInput : countryCode + phoneInput;
+  resultEl.textContent = 'Sjekker... 🚀';
+  try{
+    const res = await fetch('/lookup',{
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({phonenumber: phone})
+    });
+    const data = await res.json();
+    resultEl.textContent = data.success ? data.carrier : 'Feil: ' + data.error;
+  }catch(e){ console.error(e); resultEl.textContent = 'Noe gikk galt ⚡'; }
+}
+function showPlans(){
+  const provider=document.getElementById('providerSelect').value;
+  const container=document.getElementById('plansContainer');
+  container.innerHTML='';
+  if(!provider) return;
+  const plans=plansData[provider];
+  plans.forEach(plan=>{
+    const div=document.createElement('div');
+    div.className='plan-item show';
+    div.innerHTML=`<span class="plan-name">${plan.Abonnement}</span> <span class="plan-price">${plan.Pris}</span>`;
+    container.appendChild(div);
+  });
+}
+function checkPassword(){
+  const input=document.getElementById('passwordInput').value;
+  const msg=document.getElementById('loginMessage');
+  if(input==='abdiddy'){ msg.style.color='#00ffea'; msg.textContent='Passord riktig! 🚀'; document.getElementById('loginContainer').classList.add('success');}
+  else{ msg.style.color='#ff00ff'; msg.textContent='Feil passord! ⚡'; }
+}
+</script>
+</body>
+</html>
+"""
+
+plans_data = {
+  "Fjordkraft":[
+    {"Abonnement":"2 GB","Pris":"149 kr /md"},
+    {"Abonnement":"6 GB","Pris":"229 kr /md"},
+    {"Abonnement":"15 GB","Pris":"279 kr /md"},
+    {"Abonnement":"20 GB","Pris":"299 kr /md"},
+    {"Abonnement":"Fri Data Start","Pris":"298 kr /md"},
+    {"Abonnement":"Fri Data Smart","Pris":"348 kr /md"},
+    {"Abonnement":"Fri Data Standard","Pris":"398 kr /md"},
+    {"Abonnement":"Fri Data Maks","Pris":"499 kr /md"},
+    {"Abonnement":"Ubegrensa Basis","Pris":"299 kr /md"}
+  ],
+  "PlussMobil":[
+    {"Abonnement":"0 GB","Pris":"45 kr"},{"Abonnement":"1 GB Standard","Pris":"119 kr"},{"Abonnement":"1 GB med rollover","Pris":"139 kr"},
+    {"Abonnement":"10 GB Standard","Pris":"198 kr"},{"Abonnement":"15 GB Standard","Pris":"248 kr"},{"Abonnement":"30 GB Standard","Pris":"298 kr"},
+    {"Abonnement":"Familie 2 GB (2 pers.)","Pris":"198 kr"},{"Abonnement":"Fri Data Start","Pris":"298 kr /md"},{"Abonnement":"Fri Data Smart","Pris":"348 kr /md"},
+    {"Abonnement":"Fri Data Standard","Pris":"398 kr /md"},{"Abonnement":"Fri Data Maks","Pris":"499 kr /md"}
+  ],
+  "OneCall":[
+    {"Abonnement":"FolkePakka 1 GB","Pris":"149 kr"},{"Abonnement":"FolkePakka 3 GB","Pris":"199 kr"},{"Abonnement":"FolkePakka 10 GB","Pris":"249 kr"},
+    {"Abonnement":"FolkePakka 25 GB","Pris":"349 kr"},{"Abonnement":"Full Data","Pris":"479 kr"},{"Abonnement":"StudentPakka 15 GB","Pris":"279 kr"},
+    {"Abonnement":"FamiliePakka Full Data","Pris":"849–1649 kr"}
+  ],
+  "Ice":[
+    {"Abonnement":"iceMax med Netflix","Pris":"429 kr"},{"Abonnement":"iceMax","Pris":"399 kr"},{"Abonnement":"Prøv Oss 99 kr","Pris":"99 kr"},
+    {"Abonnement":"2 GB","Pris":"179 kr"},{"Abonnement":"6 GB","Pris":"229 kr"},{"Abonnement":"12 GB","Pris":"279 kr"},{"Abonnement":"20 GB","Pris":"299 kr"}
+  ],
+  "Talkmore":[
+    {"Abonnement":"1 GB","Pris":"249 kr /md"},{"Abonnement":"5 GB","Pris":"299 kr /md"},{"Abonnement":"10 GB","Pris":"349 kr /md"},
+    {"Abonnement":"30 GB","Pris":"449 kr /md"},{"Abonnement":"Ubegrenset Normal","Pris":"529 kr /md"},
+    {"Abonnement":"Ubegrenset Maksimal","Pris":"629 kr /md"}
+  ],
+  "Telenor":[
+    {"Abonnement":"Fast 5 GB","Pris":"399 kr"},{"Abonnement":"Fast 10 GB","Pris":"479 kr"},{"Abonnement":"Enkel 599 kr","Pris":"599 kr"},
+    {"Abonnement":"Normal 699 kr","Pris":"699 kr"},{"Abonnement":"Maksimal 799 kr","Pris":"799 kr"}
+  ],
+  "Chilimobil":[
+    {"Abonnement":"Fri Data Basis+","Pris":"298,-"},
+    {"Abonnement":"Fri Data Standard","Pris":"349,-"},
+    {"Abonnement":"Fri Data Max","Pris":"398,-"},
+    {"Abonnement":"20 GB","Pris":"249,-"},
+    {"Abonnement":"6 GB","Pris":"199,-"},
+    {"Abonnement":"2 GB","Pris":"139,-"},
+    {"Abonnement":"1 GB","Pris":"99,-"}
+  ],
+  "Happybytes":[
+    {"Abonnement":"2 GB","Pris":"138 kr"},
+    {"Abonnement":"5 GB","Pris":"148 kr"},
+    {"Abonnement":"12 GB","Pris":"198 kr"},
+    {"Abonnement":"15 GB","Pris":"248 kr"},
+    {"Abonnement":"30 GB","Pris":"298 kr"},
+    {"Abonnement":"Fri Data","Pris":"298 kr"},
+    {"Abonnement":"Fri Data +","Pris":"448 kr"}
+  ]
+}
+
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template_string(HTML_PAGE, plans_data=plans_data)
 
 @app.route('/lookup', methods=['POST'])
 def lookup():
