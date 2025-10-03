@@ -1,0 +1,41 @@
+from flask import Flask, render_template, request, jsonify
+import requests
+
+app = Flask(__name__)
+
+SMSPOOL_API_KEY = "FYYgvc2DJZtNikuFMkoq95kzQTWVNmFD"
+SMSPOOL_URL = "https://api.smspool.net/carrier/paid_lookup"
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/lookup', methods=['POST'])
+def lookup():
+    data = request.get_json()
+    phone_number = data.get('phonenumber')
+    
+    if not phone_number:
+        return jsonify({"success": False, "error": "Telefonnummer mangler!"})
+
+    try:
+        response = requests.post(
+            SMSPOOL_URL,
+            files={'key': (None, SMSPOOL_API_KEY), 'phonenumber': (None, phone_number)}
+        )
+        response_data = response.json()
+        if response_data.get('success'):
+            return jsonify({
+                "success": True,
+                "carrier": response_data.get('carrier', 'Ukjent leverandør')
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": response_data.get('error', 'Lookup feilet')
+            })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+if __name__ == '__main__':
+    app.run(debug=True)
